@@ -1,0 +1,107 @@
+CREATE TABLE roles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description VARCHAR(255)
+);
+
+INSERT INTO roles (name, description) VALUES 
+('admin', 'Quản trị viênn'),
+('author', 'Tác giả - có quyền đăng bài'),
+('user', 'Người dùng - chỉ có quyền xem');
+
+CREATE TABLE categories (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
+);
+
+INSERT INTO categories (name) VALUES 
+('Công nghệ thông tin'),
+('Ô tô'),
+('Y tế & Sức khỏe'),
+('Giáo dục & Đào tạo'),
+('Thể thao'),
+('Kinh tế - Tài chính'),
+('Kỹ năng mềm'),
+('Văn hóa - Nghệ thuật');
+
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL, -- Đảm bảo không ai trùng tên hiển thị/tên đăng nhập
+    email VARCHAR(100) UNIQUE NOT NULL,   -- Đảm bảo mỗi người 1 tài khoản, phục vụ gửi OTP
+    password VARCHAR(255) NOT NULL,
+    role_id INT NOT NULL DEFAULT 3, 
+    FOREIGN KEY (role_id) REFERENCES roles(id)
+);
+CREATE TABLE password_resets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) NOT NULL,
+    otp_code VARCHAR(6) NOT NULL,
+    -- Dùng DATETIME: Lưu một mốc thời gian cụ thể ở tương lai do code PHP tính toán truyền xuống.
+    -- Giữ nguyên giá trị tuyệt đối, không bị tự động thay đổi nếu máy chủ đổi múi giờ.
+    expires_at DATETIME NOT NULL,
+    
+    -- Dùng TIMESTAMP: Giao phó cho MySQL tự động "bấm giờ" ngay khoảnh khắc tạo dữ liệu.
+    -- Rất nhẹ, tự động chuyển đổi theo múi giờ hệ thống (Dùng để Audit/Log).
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE profiles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE, 
+    full_name VARCHAR(100),
+    avatar VARCHAR(255) DEFAULT 'default_avatar.jpg',
+    birth_date DATE,
+    bio TEXT,
+
+    -- DEFAULT CURRENT_TIMESTAMP: Tự động lấy giờ hệ thống lúc profile được tạo.
+    -- ON UPDATE CURRENT_TIMESTAMP: Tự động cập nhật thành giờ mới nhất mỗi khi có sự thay đổi dữ liệu (đổi tên, up ảnh...).
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- ON DELETE CASCADE: Cơ chế "dọn dẹp tự động". Nếu tài khoản bên bảng users bị xóa, profile tương ứng này cũng tự động bị xóa theo để giải phóng bộ nhớ.
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE posts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    author_id INT,
+    category_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Nếu tài khoản tác giả bị xóa, bài viết KHÔNG bị xóa theo (để tránh mất nội dung hay của web). 
+    -- Thay vào đó, author_id biến thành NULL (Lên web bạn có thể hiển thị tác giả là "Người dùng ẩn danh").
+    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL,
+    
+    -- Nếu Admin xóa một Chuyên mục, các bài viết thuộc chuyên mục đó không bị mất, 
+    -- chúng chỉ bị mất nhãn (category_id = NULL) chờ Admin phân loại lại sau.
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE system_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL, 
+    action VARCHAR(100) NOT NULL,
+    details TEXT,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- lệnh SET NULL giúp giữ lại toàn bộ lịch sử (action, IP, thời gian) để Admin còn điều tra, 
+    -- chỉ có ô user_id là trống đi thôi.
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE comments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    post_id INT,
+    user_id INT,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Bài viết đã bị mất thì các bình luận cũng tự động mất theo
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    
+    -- Cơ chế "cấm cửa": Nếu Admin ban/xóa một tài khoản spam, mọi bình luận cãi vã, 
+    -- spam của người đó trên toàn hệ thống lập tức bốc hơi tự động chỉ với 1 cú click của Admin.
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
